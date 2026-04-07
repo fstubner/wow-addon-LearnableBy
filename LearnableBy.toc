@@ -1,0 +1,8 @@
+## Interface: 120001
+## Title: LearnableBy
+## Notes: Shows which classes can equip an item and what slot it occupies.
+## Author: fstubner
+## Version: 1.0.0
+## IconTexture: Interface\Icons\INV_Misc_Book_09
+
+LearnableBy.lua
