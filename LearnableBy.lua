@@ -1,48 +1,44 @@
 --[[
   LearnableBy — WoW Addon
-  Shows which classes can equip an item and what slot it occupies, directly in the item tooltip.
+  Shows which of your alts can equip or learn an item, and flags collectibles
+  you've already picked up — all directly in the item tooltip.
 
   Author: fstubner
-  Version: 1.0.0
+  Version: 2.0.0
   Interface: 120001 (The War Within / Midnight)
+
+  SavedVariables layout (account-wide):
+    LearnableByDB = {
+      alts = {
+        ["CharName-RealmName"] = {
+          name      = "CharName",
+          realm     = "RealmName",
+          classFile = "WARRIOR",
+          level     = 80,
+        },
+        ...
+      }
+    }
 --]]
 
--- ─── Slot names ──────────────────────────────────────────────────────────────
+local ADDON_NAME = "LearnableBy"
+local VERSION    = "2.0.0"
 
-local SLOT_NAMES = {
-  INVTYPE_HEAD          = "Head",
-  INVTYPE_NECK          = "Neck",
-  INVTYPE_SHOULDER      = "Shoulder",
-  INVTYPE_BODY          = "Shirt",
-  INVTYPE_CHEST         = "Chest",
-  INVTYPE_ROBE          = "Chest",
-  INVTYPE_WAIST         = "Waist",
-  INVTYPE_LEGS          = "Legs",
-  INVTYPE_FEET          = "Feet",
-  INVTYPE_WRIST         = "Wrist",
-  INVTYPE_HAND          = "Hands",
-  INVTYPE_FINGER        = "Finger",
-  INVTYPE_TRINKET       = "Trinket",
-  INVTYPE_CLOAK         = "Back",
-  INVTYPE_WEAPON        = "One-Hand",
-  INVTYPE_SHIELD        = "Off-Hand",
-  INVTYPE_2HWEAPON      = "Two-Hand",
-  INVTYPE_WEAPONMAINHAND = "Main Hand",
-  INVTYPE_WEAPONOFFHAND  = "Off Hand",
-  INVTYPE_HOLDABLE       = "Held in Off-Hand",
-  INVTYPE_RANGED         = "Ranged",
-  INVTYPE_RANGEDRIGHT    = "Ranged",
-  INVTYPE_THROWN         = "Thrown",
-  INVTYPE_RELIC          = "Relic",
-  INVTYPE_TABARD         = "Tabard",
-  INVTYPE_BAG            = "Bag",
-  INVTYPE_QUIVER         = "Quiver",
-  INVTYPE_AMMO           = "Ammo",
-  INVTYPE_NON_EQUIP      = nil,
-  INVTYPE_NON_EQUIP_IGNORE = nil,
+local CLASS_DISPLAY = {
+  DEATHKNIGHT = "Death Knight",
+  DEMONHUNTER = "Demon Hunter",
+  DRUID       = "Druid",
+  EVOKER      = "Evoker",
+  HUNTER      = "Hunter",
+  MAGE        = "Mage",
+  MONK        = "Monk",
+  PALADIN     = "Paladin",
+  PRIEST      = "Priest",
+  ROGUE       = "Rogue",
+  SHAMAN      = "Shaman",
+  WARLOCK     = "Warlock",
+  WARRIOR     = "Warrior",
 }
-
--- ─── Armor class → class list ─────────────────────────────────────────────────
 
 local ARMOR_CLASSES = {
   [1] = { "Mage", "Priest", "Warlock" },
@@ -51,17 +47,15 @@ local ARMOR_CLASSES = {
   [4] = { "Death Knight", "Paladin", "Warrior" },
 }
 
--- ─── Weapon subclass → class list ────────────────────────────────────────────
-
 local WEAPON_CLASSES = {
-  [0]  = { "Death Knight", "Druid", "Hunter", "Paladin", "Rogue", "Shaman", "Warrior", "Evoker" },
+  [0]  = { "Death Knight", "Druid", "Evoker", "Hunter", "Paladin", "Rogue", "Shaman", "Warrior" },
   [1]  = { "Death Knight", "Druid", "Hunter", "Paladin", "Shaman", "Warrior" },
   [2]  = { "Hunter", "Rogue", "Warrior" },
   [3]  = { "Hunter", "Rogue", "Warrior" },
   [4]  = { "Death Knight", "Druid", "Monk", "Paladin", "Priest", "Rogue", "Shaman", "Warrior" },
   [5]  = { "Death Knight", "Druid", "Paladin", "Shaman", "Warrior" },
-  [6]  = { "Death Knight", "Druid", "Hunter", "Monk", "Paladin", "Warrior", "Evoker" },
-  [7]  = { "Death Knight", "Demon Hunter", "Mage", "Paladin", "Rogue", "Warlock", "Warrior", "Evoker" },
+  [6]  = { "Death Knight", "Druid", "Evoker", "Hunter", "Monk", "Paladin", "Warrior" },
+  [7]  = { "Death Knight", "Demon Hunter", "Evoker", "Mage", "Paladin", "Rogue", "Warlock", "Warrior" },
   [8]  = { "Death Knight", "Paladin", "Warrior" },
   [9]  = { "Demon Hunter", "Rogue", "Warrior" },
   [10] = { "Druid", "Hunter", "Mage", "Monk", "Priest", "Shaman", "Warlock", "Warrior" },
@@ -74,40 +68,74 @@ local WEAPON_CLASSES = {
   [20] = { "Everyone" },
 }
 
--- ─── Helpers ─────────────────────────────────────────────────────────────────
+local SLOT_NAMES = {
+  INVTYPE_HEAD           = "Head",
+  INVTYPE_NECK           = "Neck",
+  INVTYPE_SHOULDER       = "Shoulder",
+  INVTYPE_BODY           = "Shirt",
+  INVTYPE_CHEST          = "Chest",
+  INVTYPE_ROBE           = "Chest",
+  INVTYPE_WAIST          = "Waist",
+  INVTYPE_LEGS           = "Legs",
+  INVTYPE_FEET           = "Feet",
+  INVTYPE_WRIST          = "Wrist",
+  INVTYPE_HAND           = "Hands",
+  INVTYPE_FINGER         = "Finger",
+  INVTYPE_TRINKET        = "Trinket",
+  INVTYPE_CLOAK          = "Back",
+  INVTYPE_WEAPON         = "One-Hand",
+  INVTYPE_SHIELD         = "Off-Hand",
+  INVTYPE_2HWEAPON       = "Two-Hand",
+  INVTYPE_WEAPONMAINHAND = "Main Hand",
+  INVTYPE_WEAPONOFFHAND  = "Off Hand",
+  INVTYPE_HOLDABLE       = "Held in Off-Hand",
+  INVTYPE_RANGED         = "Ranged",
+  INVTYPE_RANGEDRIGHT    = "Ranged",
+  INVTYPE_THROWN         = "Thrown",
+  INVTYPE_RELIC          = "Relic",
+  INVTYPE_TABARD         = "Tabard",
+  INVTYPE_BAG            = "Bag",
+  INVTYPE_QUIVER         = "Quiver",
+}
 
-local function sortedUnique(t)
-  local seen = {}
-  local out  = {}
-  for _, v in ipairs(t) do
-    if not seen[v] then
-      seen[v] = true
-      out[#out + 1] = v
-    end
-  end
-  table.sort(out)
-  return out
+LearnableByDB = nil
+
+local function initDB()
+  if not LearnableByDB then LearnableByDB = {} end
+  if not LearnableByDB.alts then LearnableByDB.alts = {} end
 end
 
-local function join(t, sep)
-  return table.concat(t, sep)
+local function registerSelf()
+  initDB()
+  local name      = UnitName("player")
+  local realm     = GetRealmName()
+  local classFile = select(2, UnitClass("player"))
+  local level     = UnitLevel("player")
+  local key       = name .. "-" .. realm
+  LearnableByDB.alts[key] = { name = name, realm = realm, classFile = classFile, level = level }
 end
 
-local function colorText(r, g, b, text)
-  return string.format("|cff%02x%02x%02x%s|r", r * 255, g * 255, b * 255, text)
+local function getAltRoster()
+  if not LearnableByDB or not LearnableByDB.alts then return {} end
+  local roster = {}
+  for _, alt in pairs(LearnableByDB.alts) do roster[#roster + 1] = alt end
+  table.sort(roster, function(a, b) return a.name < b.name end)
+  return roster
 end
 
-local function GOLD(text)  return colorText(1.00, 0.82, 0.00, text) end
-local function GREY(text)  return colorText(0.60, 0.60, 0.60, text) end
-local function GREEN(text) return colorText(0.10, 0.90, 0.10, text) end
-
--- ─── Core tooltip logic ───────────────────────────────────────────────────────
+local function join(t, sep) return table.concat(t, sep) end
+local function colorText(r, g, b, text) return string.format("|cff%02x%02x%02x%s|r", r*255, g*255, b*255, text) end
+local function GOLD(text)   return colorText(1.00, 0.82, 0.00, text) end
+local function GREY(text)   return colorText(0.60, 0.60, 0.60, text) end
+local function GREEN(text)  return colorText(0.10, 0.90, 0.10, text) end
+local function YELLOW(text) return colorText(1.00, 1.00, 0.20, text) end
+local function RED(text)    return colorText(0.90, 0.20, 0.20, text) end
 
 local function addLearnableByLines(tooltip, itemLink)
   if not itemLink then return end
 
-  local itemName, _, _, _, _, itemType, itemSubType,
-        _, itemEquipLoc, _, _, itemClassID, itemSubClassID =
+  local itemName, _, _, _, _, _, _,
+        _, itemEquipLoc, _, itemID, itemClassID, itemSubClassID =
     GetItemInfo(itemLink)
 
   if not itemName then return end
@@ -117,31 +145,75 @@ local function addLearnableByLines(tooltip, itemLink)
     tooltip:AddLine(GREY("Slot: ") .. GOLD(slotName))
   end
 
-  local classList
+  -- Toys
+  if itemID and PlayerHasToy and PlayerHasToy(itemID) then
+    tooltip:AddLine(GREY("Toy: ") .. GREEN("✓ Already collected"))
+    return
+  end
 
+  -- Transmog appearance
+  if itemID and C_TransmogCollection and C_TransmogCollection.GetItemInfo then
+    local sourceID = select(2, C_TransmogCollection.GetItemInfo(itemID))
+    if sourceID then
+      if C_TransmogCollection.PlayerKnowsSource(sourceID) then
+        tooltip:AddLine(GREY("Appearance: ") .. GREEN("✓ Already collected"))
+      else
+        tooltip:AddLine(GREY("Appearance: ") .. RED("✗ Not collected"))
+      end
+    end
+  end
+
+  if itemClassID ~= Enum.ItemClass.Armor and itemClassID ~= Enum.ItemClass.Weapon then return end
+
+  -- Build set of classes that can equip this item
+  local equippableClasses
   if itemClassID == Enum.ItemClass.Armor then
-    if itemSubClassID == 0 then
-      classList = { "Everyone" }
-    else
-      classList = ARMOR_CLASSES[itemSubClassID]
+    if itemSubClassID ~= 0 then
+      local classList = ARMOR_CLASSES[itemSubClassID]
+      if classList then
+        equippableClasses = {}
+        for _, c in ipairs(classList) do equippableClasses[c] = true end
+      end
     end
   elseif itemClassID == Enum.ItemClass.Weapon then
-    classList = WEAPON_CLASSES[itemSubClassID]
+    local classList = WEAPON_CLASSES[itemSubClassID]
+    if classList and classList[1] ~= "Everyone" then
+      equippableClasses = {}
+      for _, c in ipairs(classList) do equippableClasses[c] = true end
+    end
   end
 
-  if classList then
-    local unique = sortedUnique(classList)
-    local label  = (#unique == 1 and unique[1] == "Everyone")
-        and GREEN("Everyone")
-        or  GREEN(join(unique, ", "))
-    tooltip:AddLine(GREY("Learnable by: ") .. label)
+  local roster = getAltRoster()
+  local currentName  = UnitName("player")
+  local currentRealm = GetRealmName()
+
+  if #roster == 0 then
+    if equippableClasses then
+      local classList = {}
+      for c in pairs(equippableClasses) do classList[#classList + 1] = c end
+      table.sort(classList)
+      tooltip:AddLine(GREY("Equippable by: ") .. YELLOW(join(classList, ", ")))
+      tooltip:AddLine(GREY("(Log in on each alt to see your roster)"))
+    end
+    return
   end
+
+  local canUse, cantUse = {}, {}
+  for _, alt in ipairs(roster) do
+    local display  = CLASS_DISPLAY[alt.classFile]
+    local eligible = (equippableClasses == nil) or (display and equippableClasses[display])
+    local label    = alt.name
+    if alt.realm ~= currentRealm then label = alt.name .. " (" .. alt.realm .. ")" end
+    if alt.name == currentName and alt.realm == currentRealm then label = label .. " ❆" end
+    if eligible then canUse[#canUse + 1] = label else cantUse[#cantUse + 1] = label end
+  end
+
+  if #canUse  > 0 then tooltip:AddLine(GREY("Can equip:    ") .. GREEN(join(canUse,  ", "))) end
+  if #cantUse > 0 then tooltip:AddLine(GREY("Can't equip:  ") .. RED(join(cantUse, ", ")))  end
 end
 
--- ─── Tooltip hooks ───────────────────────────────────────────────────────────
-
-local function hookTooltip(tooltip)
-  tooltip:HookScript("OnTooltipSetItem", function(self)
+local function hookTooltip(tt)
+  tt:HookScript("OnTooltipSetItem", function(self)
     local _, link = self:GetItem()
     addLearnableByLines(self, link)
   end)
@@ -152,20 +224,42 @@ hookTooltip(ItemRefTooltip)
 hookTooltip(ShoppingTooltip1)
 hookTooltip(ShoppingTooltip2)
 
--- ─── Slash commands ───────────────────────────────────────────────────────────
+local eventFrame = CreateFrame("Frame")
+eventFrame:RegisterEvent("ADDON_LOADED")
+eventFrame:RegisterEvent("PLAYER_LOGIN")
+eventFrame:SetScript("OnEvent", function(_, event, arg1)
+  if event == "ADDON_LOADED" and arg1 == ADDON_NAME then initDB()
+  elseif event == "PLAYER_LOGIN" then registerSelf()
+  end
+end)
 
 SLASH_LEARNABLEBY1 = "/learnableby"
 SLASH_LEARNABLEBY2 = "/lby"
 
 SlashCmdList["LEARNABLEBY"] = function(msg)
   local cmd = strtrim(msg):lower()
-  if cmd == "help" or cmd == "" then
-    print(GOLD("LearnableBy") .. " — commands:")
-    print("  " .. GOLD("/lby help") .. "  — show this help")
-    print("  " .. GOLD("/lby about") .. " — show version info")
+  if cmd == "" or cmd == "help" then
+    print(GOLD("LearnableBy") .. " v" .. VERSION .. " — commands:")
+    print("  " .. GOLD("/lby alts") ..  "   — list your registered alts")
+    print("  " .. GOLD("/lby clear") .. "  — clear the alt roster")
+    print("  " .. GOLD("/lby about") .. "  — version info")
+  elseif cmd == "alts" then
+    local roster = getAltRoster()
+    if #roster == 0 then
+      print(GOLD("LearnableBy") .. ": no alts registered yet. Log in on each character to add them.")
+    else
+      print(GOLD("LearnableBy") .. " — registered alts (" .. #roster .. "):")
+      for _, alt in ipairs(roster) do
+        print("  " .. YELLOW(alt.name) .. " [" .. (CLASS_DISPLAY[alt.classFile] or alt.classFile) .. "] — " .. alt.realm)
+      end
+    end
+  elseif cmd == "clear" then
+    LearnableByDB.alts = {}
+    registerSelf()
+    print(GOLD("LearnableBy") .. ": alt roster cleared. Current character re-registered.")
   elseif cmd == "about" then
-    print(GOLD("LearnableBy") .. " v1.0.0 by fstubner")
-    print("Adds class and slot information to item tooltips.")
+    print(GOLD("LearnableBy") .. " v" .. VERSION .. " by fstubner")
+    print("Adds per-alt equip info and collection status to item tooltips.")
   else
     print(GOLD("LearnableBy") .. ": unknown command. Type " .. GOLD("/lby help") .. " for options.")
   end

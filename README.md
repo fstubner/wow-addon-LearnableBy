@@ -1,20 +1,29 @@
 # LearnableBy
 
-A World of Warcraft addon that adds **class** and **slot** information directly to item tooltips — so you always know who can equip something without leaving the game or alt-tabbing to Wowhead.
+A World of Warcraft addon that enriches item tooltips with information specific to **your account** — showing which of your alts can equip an item and whether you’ve already collected a toy, mount, or transmog appearance.
 
 ![Interface: 12.0.1](https://img.shields.io/badge/Interface-12.0.1%20%28Midnight%29-C69B3A?style=flat-square)
-![Version: 1.0.0](https://img.shields.io/badge/Version-1.0.0-informational?style=flat-square)
+![Version: 2.0.0](https://img.shields.io/badge/Version-2.0.0-informational?style=flat-square)
 
 ## What it does
 
-When you hover over any equippable item, LearnableBy appends two lines to the tooltip:
-
+**For equippable gear:**
 ```
-Slot:          Two-Hand
-Learnable by:  Death Knight, Paladin, Warrior
+Slot:         Two-Hand
+Can equip:    Bjorn ❆, Vaelithar
+Can't equip:  Zylara, Prismfang
+```
+(❆ marks the character you're currently playing)
+
+**For collectibles (toys, transmog appearances):**
+```
+Toy:          ✓ Already collected
+Appearance:   ✗ Not collected
 ```
 
-It handles all armour types (cloth, leather, mail, plate), all weapon types (axes, swords, staves, bows, crossbows, daggers, wands, fist weapons, polearms, warglaives, and more), and universal items like rings, trinkets, and cloaks. Tooltips work everywhere — item links in chat, the auction house, character inspect, dungeon journal, and loot frames.
+### How the alt roster works
+
+Every time you log in on a character, LearnableBy silently registers that character (name, realm, class) into an account-wide SavedVariables database. After logging in on all your alts once, tooltips everywhere will show exactly which of your characters benefit from an item — no configuration required.
 
 ## Installation
 
@@ -23,26 +32,36 @@ It handles all armour types (cloth, leather, mail, plate), all weapon types (axe
    ```
    World of Warcraft/_retail_/Interface/AddOns/LearnableBy
    ```
-3. Launch WoW (or `/reload` if already in-game) and enable the addon in the AddOns menu.
+3. Launch WoW (or `/reload`) and enable the addon.
+4. Log in on each of your alts at least once to build the roster.
 
 ## Slash commands
 
 | Command | Description |
 |---|---|
 | `/lby` or `/lby help` | Show available commands |
+| `/lby alts` | List all registered alts and their classes |
+| `/lby clear` | Clear the roster and start fresh |
 | `/lby about` | Show version info |
 | `/learnableby` | Alias for `/lby` |
+
+## What’s tracked
+
+- **Equippable items** (armor, weapons): filtered by class restrictions — cloth, leather, mail, plate, and all weapon types
+- **Toys**: uses `PlayerHasToy()` — account-wide
+- **Transmog appearances**: uses `C_TransmogCollection.PlayerKnowsSource()` — account-wide
+- **Universal items** (rings, necks, trinkets, cloaks): skips class filtering, shows all alts
 
 ## Compatibility
 
 - **Interface:** 12.0.1 (The War Within / Midnight)
-- Uses the modern `OnTooltipSetItem` hook — no `OnUpdate` polling
-- Hooks `GameTooltip`, `ItemRefTooltip`, `ShoppingTooltip1`, and `ShoppingTooltip2`
-- No dependencies; no saved variables
+- Uses `OnTooltipSetItem` hook — no `OnUpdate` polling
+- Hooks `GameTooltip`, `ItemRefTooltip`, `ShoppingTooltip1`, `ShoppingTooltip2`
+- SavedVariables: `LearnableByDB` (account-wide)
 
 ## Contributing
 
-Pull requests welcome. If a class/weapon subclass mapping is wrong or a new weapon type is added in a patch, please open an issue or PR with a fix and the relevant Wowpedia source.
+Pull requests welcome. If a class/weapon mapping is outdated or a new item type should be tracked, please open an issue with a Wowpedia source.
 
 ## License
 
